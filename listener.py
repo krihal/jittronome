@@ -47,7 +47,7 @@ def producer():
     high = 0
     timestamp = 0
     last_timestamp = 0
-    timestamp_delta = 0
+    delta = 0
 
     pa = pyaudio.PyAudio()
     stream = pa.open(format=FORMAT,
@@ -60,22 +60,22 @@ def producer():
         try:
             block = stream.read(INPUT_FRAMES_PER_BLOCK)
         except IOError as e:
-            print(f'Recording failed: {e}')
+            print(f'Recording failed, skipping sample: {e}')
+            continue
 
         if get_rms(block) > PULSE_AMPLITUDE:
             high += 1
             timestamp = time.time() * 1000
-            timestamp_epoch = time.time()
             if ticks == 0:
-                timestamp_delta = 0.0
+                delta = 0.0
             else:
-                timestamp_delta = timestamp - last_timestamp - 500
+                delta = timestamp - last_timestamp - 500
 
             if ticked is False and high > 2:
                 ticks += 1
                 last_timestamp = timestamp
                 samples_queue.put(
-                    [ticks, timestamp, timestamp_delta, timestamp_epoch])
+                    [ticks, timestamp, delta])
                 ticked = True
         else:
             ticked = False
@@ -84,9 +84,9 @@ def producer():
 
 def consumer():
     while True:
-        ticks, timestamp, timestamp_delta, timestamp_epoch = samples_queue.get()
-        sql_data = f'INSERT INTO measurements (tick,description,timestamp_ms)' + \
-            f' VALUES ({ticks}, {receiver_name}, {timestamp_delta});'
+        ticks, timestamp, delta = samples_queue.get()
+        sql_data = f'INSERT INTO measurements (tick, description, timestamp_rx)' + \
+            f' VALUES ({ticks}, {receiver_name}, {timestamp});'
         json_data = [
             {
                 "measurement": "zoom_jitter",
@@ -95,7 +95,7 @@ def consumer():
                 },
                 'fields': {
                     "ticks": ticks,
-                    "jitter": timestamp_delta,
+                    "jitter": delta,
                 }
             }
         ]
