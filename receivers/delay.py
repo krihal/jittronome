@@ -1,153 +1,157 @@
+import sys
 import math
 import time
 import redis
 import queue
 import struct
 import pyaudio
+import argparse
 import threading
 
 from datetime import datetime
 from influxdb import InfluxDBClient
-
-q = queue.Queue()
-client = InfluxDBClient(host='192.168.122.199', port=8086)
-client.switch_database('metronome')
-#client.create_retention_policy('default_policy', '3d', 3, default=True)
-
-FORMAT = pyaudio.paInt16
-SHORT_NORMALIZE = (1.0/32768.0)
-CHANNELS = 1
-RATE = 5000
-INPUT_BLOCK_TIME = 0.008
-INPUT_FRAMES_PER_BLOCK = int(RATE * INPUT_BLOCK_TIME)
-
-ticks = 0
+from rfc3339 import rfc3339
 
 
-def get_rms(block):
-    count = len(block)/2
-    format = "%dh" % (count)
-    shorts = struct.unpack(format, block)
-    sum_squares = 0.0
-    for sample in shorts:
-        n = sample * SHORT_NORMALIZE
-        sum_squares += n*n
+class DelayListener(object):
+    def __init__(self, influx_host, influx_port, redis_host, redis_port,
+                 listener_name):
+        self.listener_queue = queue.Queue()
+        self.listener_name = listener_name
 
-    return math.sqrt(sum_squares / count)
+        self.client = InfluxDBClient(host=influx_host, port=influx_port)
+        self.client.switch_database('metronome')
 
+        self.redis_client = redis.Redis(host=redis_host, port=redis_port, db=0)
 
-def producer():
-    global ticks
-    pa = pyaudio.PyAudio()
-    stream = pa.open(format=FORMAT,
-                     channels=CHANNELS,
-                     rate=RATE,
-                     input=True,
-                     frames_per_buffer=INPUT_FRAMES_PER_BLOCK)
+        self.format = pyaudio.paInt16
+        self.short_normalize = (1.0/32768.0)
+        self.input_block_time = 0.005
+        self.input_frames_per_block = int(5000 * self.input_block_time)
+        self.ticks = 0
 
-    timestamp = 0
-    last_timestamp = 0
-    errorcount = 0
+    def get_rms(self, block):
+        count = len(block)/2
+        format = "%dh" % (count)
+        shorts = struct.unpack(format, block)
+        sum_squares = 0.0
+        for sample in shorts:
+            n = sample * self.short_normalize
+            sum_squares += n*n
 
-    trigger_high = False
-    pulse_start = 0
-    pulse = 0
+        return math.sqrt(sum_squares / count)
 
-    while True:
-        try:
-            block = stream.read(INPUT_FRAMES_PER_BLOCK)
-        except IOError as e:
-            errorcount += 1
-            print("(%d) Error recording: %s" % (errorcount, e))
+    def producer(self):
+        timestamp = 0
+        errorcount = 0
 
-        amplitude = get_rms(block)
-        if amplitude > 0.0001:
-            if pulse_start == 0:
-                dt = datetime.now()
-                timestamp = dt.timestamp()
-                trigger_high = False
+        pulse = 0
+        pulse_start = 0
+        trigger_high = False
 
-            if amplitude > 0.1:
-                trigger_high = True
-            pulse_start += 1
-            if pulse_start == 6:
-                if trigger_high == False:
-                    pulse = 0
-                else:
-                    pulse += 1
+        pa = pyaudio.PyAudio()
+        stream = pa.open(format=self.format,
+                         channels=1,
+                         rate=5000,
+                         input=True,
+                         frames_per_buffer=self.input_frames_per_block)
 
-                last_timestamp = timestamp
-                q.put([ticks, timestamp, trigger_high, pulse])
-        else:
-            pulse_start = 0
+        while True:
+            try:
+                block = stream.read(self.input_frames_per_block)
+            except IOError as e:
+                errorcount += 1
+                print("(%d) Error recording: %s" % (errorcount, e))
+                continue
 
+            amplitude = self.get_rms(block)
 
-def consumer():
-    global ticks
-    print('Consumer started')
+            if amplitude > 0.0001:
+                if pulse_start == 0:
+                    timestamp = datetime.now().timestamp()
+                    trigger_high = False
 
-    redis_client = redis.Redis(host='192.168.122.199', port=6379, db=0)
+                if amplitude > 0.1:
+                    trigger_high = True
 
-    redis_client.delete('packets_sent_x')
-    bar = []
-    
-    while True:
-        ticks,timestamp,trigger_high,pulse = q.get()
-        tmp_str = str(redis_client.rpop('packets_sent_x'))
-        try:            
-            sent_timestamp,packets_sent,highlow,sender_pulse = tmp_str.split(' ')
-        except Exception:
-            continue
-        sent = int(packets_sent.replace("'", ""))
-        sender_pulse = int(sender_pulse.replace("'", ""))        
-        recv = ticks
-        
-        time_sent = float(sent_timestamp[2:])
-        time_recv = float(timestamp)
+                pulse_start += 1
+                if pulse_start == 6:
+                    if trigger_high == False:
+                        pulse = 0
+                    else:
+                        pulse += 1
 
-        # print(f'{time_sent} {time_recv}')
+                    self.listener_queue.put(
+                        [self.ticks, timestamp, trigger_high, pulse])
+            else:
+                pulse_start = 0
 
-        if "low" in highlow:
-            trigger_sender = False
-        else:
-            trigger_sender = True
-        
+    def consumer(self):
+        self.redis_client.delete(self.listener_name)
+        influx_results = []
 
-        if sender_pulse != pulse:
-            tmp_str = str(redis_client.rpop('packets_sent_x'))
-            bar = []
-            print(f'pulse missmatch in bar dropping bar')
-            continue
-        else:
-            delay = time_recv - time_sent
+        while True:
+            ticks, timestamp, trigger_high, pulse = self.listener_queue.get()
+            tmp_str = str(self.redis_client.rpop(self.listener_name))
+            try:
+                sent_timestamp, packets_sent, highlow, sender_pulse = tmp_str.split(
+                    ' ')
+            except Exception:
+                continue
+            sender_pulse = int(sender_pulse.replace("'", ""))
 
-        from rfc3339 import rfc3339
-        print(timestamp)
-        d = datetime.fromtimestamp(timestamp)
-        
-        json_data = [
-            {
+            time_sent = float(sent_timestamp[2:])
+            time_recv = float(timestamp)
+
+            if sender_pulse != pulse:
+                tmp_str = str(self.redis_client.rpop('packets_sent_x'))
+                influx_results = []
+                print(f'Pulse missmatch, dropping results and restarting')
+                continue
+            else:
+                delay = time_recv - time_sent
+
+            current_timestamp = datetime.fromtimestamp(timestamp)
+
+            json_data = [{
                 "measurement": "zoom_delayx",
                 "tags": {
-                    'name': "Receiver 1",
+                    'name': self.listener_name,
                 },
                 'fields': {
                     'delay': delay
                 },
-                "time": rfc3339(d)
-            }
-        ]
-        bar.append(json_data)
-        if pulse == 0:
-            for mp in bar:
-                client.write_points(mp)
-            bar = []
-            print(f' write to Influx')
+                "time": rfc3339(current_timestamp)
+            }]
 
+            influx_results.append(json_data)
 
-        # print(f'Ticks: {recv}, Delay: {delay}')
-        
+            if pulse == 0:
+                for result in influx_results:
+                    res = self.client.write_points(result)
+                influx_results = []
+
+                if res:
+                    print(f'Wrote result {ticks} to InfluxDB')
+                else:
+                    print(f'Failed to write result {ticks} to InfluxDB')
+
 
 if __name__ == '__main__':
-    threading.Thread(target=consumer, daemon=True).start()
-    threading.Thread(target=producer, daemon=False).start()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-r', '--redis_host')
+    parser.add_argument('-p', '--redis_port', default=6379)
+    parser.add_argument('-i', '--influx_host')
+    parser.add_argument('-o', '--influx_port', default=8086)
+    parser.add_argument('-n', '--listener_name')
+    args = parser.parse_args()
+
+    if None in [args.influx_host, args.redis_host, args.listener_name]:
+        print('Use -h or --help to see required arguments.')
+        sys.exit(0)
+
+    listener = DelayListener(args.influx_host, args.influx_port,
+                             args.redis_host, args.redis_port,
+                             args.listener_name)
+    threading.Thread(target=listener.consumer, daemon=True).start()
+    threading.Thread(target=listener.producer, daemon=False).start()
