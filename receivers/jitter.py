@@ -91,7 +91,10 @@ class JitterListener(object):
                 }
             }]
 
-            self.client.write_points(json_data)
+            if self.client.write_points(json_data):
+                print(f'Wrote result {ticks} to InfluxDB')
+            else:
+                print(f'Failed to write result {ticks} to InfluxDB')
 
 
 if __name__ == '__main__':
