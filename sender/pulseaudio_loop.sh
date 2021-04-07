@@ -1,0 +1,5 @@
+#!/bin/sh
+
+pactl load-module module-null-sink sink_name=virtspk sink_properties=device.description=Virtual_Speaker
+pactl load-module module-null-sink sink_name=virtmic sink_properties=device.description=Virtual_Microphone_Sink
+pactl load-module module-remap-source master=virtmic.monitor source_name=virtmic source_properties=device.description=Virtual_Microphone
