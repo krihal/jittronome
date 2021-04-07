@@ -42,7 +42,7 @@ class Metronome():
                     state = 'high'
                 self.redis_client.lpush(
                     self.name, f'{now} {ticks} {state} {i}')
-                print(f'{now} {ticks} {state} {i}')
+                print(f'Pushed to Redis: {now} {ticks} {state} {i}')
                 time.sleep(60 / self.bpm)
 
 
