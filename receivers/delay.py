@@ -103,7 +103,7 @@ class DelayListener(object):
             time_recv = float(timestamp)
 
             if sender_pulse != pulse:
-                tmp_str = str(self.redis_client.rpop('packets_sent_x'))
+                tmp_str = str(self.redis_client.rpop(self.listener_name))
                 influx_results = []
                 print(f'Pulse missmatch, dropping results and restarting')
                 continue
@@ -113,7 +113,7 @@ class DelayListener(object):
             current_timestamp = datetime.fromtimestamp(timestamp)
 
             json_data = [{
-                "measurement": "zoom_delayx",
+                "measurement": "delay",
                 "tags": {
                     'name': self.listener_name,
                 },

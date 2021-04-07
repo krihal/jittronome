@@ -81,7 +81,7 @@ class JitterListener(object):
         while True:
             ticks, timestamp, timestamp_delta = self.listener_queue.get()
             json_data = [{
-                "measurement": "zoom_jitter",
+                "measurement": "jitter",
                 "tags": {
                     'name': self.listener_name,
                 },
