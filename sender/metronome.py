@@ -1,5 +1,10 @@
 #! /usr/bin/env python3
 
+#
+# (C) SUNET (www.sunet.se)
+#
+
+
 import sys
 import time
 import wave
