@@ -14,10 +14,10 @@ from influxdb import InfluxDBClient
 
 
 class JitterListener(object):
-    def __init__(self, redis_host, redis_port, listener_name):
+    def __init__(self, influx_host, influx_port, listener_name):
         self.listener_queue = queue.Queue()
         self.listener_name = listener_name
-        self.client = InfluxDBClient(host=redis_host, port=redis_port)
+        self.client = InfluxDBClient(host=influx_host, port=influx_port)
         self.client.switch_database('metronome')
         self.format = pyaudio.paInt16
         self.short_normalize = (1.0/32768.0)
@@ -96,16 +96,16 @@ class JitterListener(object):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-r', '--redis_host')
-    parser.add_argument('-p', '--redis_port', default=6379)
+    parser.add_argument('-r', '--influx_host')
+    parser.add_argument('-p', '--influx_port', default=8086)
     parser.add_argument('-n', '--listener_name')
     args = parser.parse_args()
 
-    if args.redis_host is None or args.listener_name is None:
+    if args.influx_host is None or args.listener_name is None:
         print('Use -h or --help to see required arguments.')
         sys.exit(0)
 
     listener = JitterListener(
-        args.redis_host, args.redis_port, args.listener_name)
+        args.influx_host, args.influx_port, args.listener_name)
     threading.Thread(target=listener.consumer, daemon=True).start()
     threading.Thread(target=listener.producer, daemon=False).start()
