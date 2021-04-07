@@ -100,8 +100,7 @@ class DelayListener(object):
             timestamp, trigger_high, pulse = self.listener_queue.get()
             tmp_str = str(self.redis_client.rpop(self.listener_name))
             try:
-                sent_timestamp, packets_sent, highlow, sender_pulse = tmp_str.split(
-                    ' ')
+                sent_timestamp, sender_pulse = tmp_str.split(' ')
             except Exception:
                 continue
             sender_pulse = int(sender_pulse.replace("'", ""))
@@ -112,7 +111,7 @@ class DelayListener(object):
             if sender_pulse != pulse:
                 tmp_str = str(self.redis_client.rpop(self.listener_name))
                 influx_results = []
-                print(f'Pulse missmatch, dropping results and restarting')
+                print('Pulse missmatch, dropping results and restarting')
                 continue
             else:
                 delay = time_recv - time_sent

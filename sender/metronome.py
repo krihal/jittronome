@@ -41,13 +41,11 @@ class Metronome():
                 now = datetime.now().timestamp()
                 if i % 4 == 0:
                     self.stream.write(self.low_data)
-                    state = 'low'
                 else:
                     self.stream.write(self.high_data)
-                    state = 'high'
-                self.redis_client.lpush(
-                    self.name, f'{now} {ticks} {state} {i}')
-                print(f'Pushed to Redis: {now} {ticks} {state} {i}')
+
+                self.redis_client.lpush(self.name, f'{now} {i}')
+                print(f'Pushed to Redis: {now} {i}')
                 time.sleep(60 / self.bpm)
 
 
