@@ -28,7 +28,6 @@ class DelayListener(object):
         self.short_normalize = (1.0/32768.0)
         self.input_block_time = 0.005
         self.input_frames_per_block = int(5000 * self.input_block_time)
-        self.ticks = 0
 
     def get_rms(self, block):
         count = len(block)/2
@@ -82,7 +81,7 @@ class DelayListener(object):
                         pulse += 1
 
                     self.listener_queue.put(
-                        [self.ticks, timestamp, trigger_high, pulse])
+                        [timestamp, trigger_high, pulse])
             else:
                 pulse_start = 0
 
@@ -91,7 +90,7 @@ class DelayListener(object):
         influx_results = []
 
         while True:
-            ticks, timestamp, trigger_high, pulse = self.listener_queue.get()
+            timestamp, trigger_high, pulse = self.listener_queue.get()
             tmp_str = str(self.redis_client.rpop(self.listener_name))
             try:
                 sent_timestamp, packets_sent, highlow, sender_pulse = tmp_str.split(
@@ -132,9 +131,10 @@ class DelayListener(object):
                 influx_results = []
 
                 if res:
-                    print(f'Wrote result {ticks} to InfluxDB')
+                    print(f'Wrote result to InfluxDB, last delay: {delay}')
                 else:
-                    print(f'Failed to write result {ticks} to InfluxDB')
+                    print(
+                        f'Failed to write result to InfluxDB, delay was: {delay}')
 
 
 if __name__ == '__main__':
