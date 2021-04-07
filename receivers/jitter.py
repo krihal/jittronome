@@ -101,7 +101,7 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--listener_name')
     args = parser.parse_args()
 
-    if args.redis_host is None or args.sender_name is None:
+    if args.redis_host is None or args.listener_name is None:
         print('Use -h or --help to see required arguments.')
         sys.exit(0)
 
