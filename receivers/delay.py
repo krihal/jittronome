@@ -41,6 +41,7 @@ class DelayListener(object):
         format = "%dh" % (count)
         shorts = struct.unpack(format, block)
         sum_squares = 0.0
+
         for sample in shorts:
             n = sample * self.short_normalize
             sum_squares += n*n
@@ -82,13 +83,12 @@ class DelayListener(object):
 
                 pulse_start += 1
                 if pulse_start == 6:
-                    if trigger_high == False:
+                    if not trigger_high:
                         pulse = 0
                     else:
                         pulse += 1
 
-                    self.listener_queue.put(
-                        [timestamp, trigger_high, pulse])
+                    self.listener_queue.put([timestamp, pulse])
             else:
                 pulse_start = 0
 
@@ -97,7 +97,7 @@ class DelayListener(object):
         influx_results = []
 
         while True:
-            timestamp, trigger_high, pulse = self.listener_queue.get()
+            timestamp, pulse = self.listener_queue.get()
             tmp_str = str(self.redis_client.rpop(self.listener_name))
             try:
                 sent_timestamp, sender_pulse = tmp_str.split(' ')
