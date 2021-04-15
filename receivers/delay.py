@@ -116,6 +116,9 @@ class DelayListener(object):
             else:
                 delay = time_recv - time_sent
 
+                if delay < 0:
+                    delay = 0.0
+
             current_timestamp = datetime.fromtimestamp(timestamp)
 
             json_data = [{
