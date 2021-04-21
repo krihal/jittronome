@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+  <style>
+    #items {
+	font-family: Arial, Helvetica, sans-serif;
+	border-collapse: collapse;
+	width: 100%;
+    }
+
+    #items td, #items th {
+	border: 1px solid #ddd;
+	padding: 8px;
+    }
+
+    #items tr:nth-child(even){background-color: #f2f2f2;}
+
+    #items tr:hover {background-color: #ddd;}
+
+    #items th {
+	padding-top: 12px;
+	padding-bottom: 12px;
+	text-align: left;
+	background-color: darkgrey;
+	color: white;
+    }
+  </style>
+
+  <body>
+    <table id="items">
+      <tr>
+	<th>Name</th>
+	<th>Type</th>
+	<th>IP address</th>
+	<th>Room</th>
+      </tr>
+
+      <tr>
+	{% for name in data: %}
+	<td>{{ name }}</td>
+	<td>{{ data[name]['type'] }}</td>
+	<td>{{ data[name]['ip-address'] }}</td>
+	<td>{{ data[name]['room'] }}</td>
+	{% endfor %}
+      </tr>
+      </table>
+   </body>
+</html>
